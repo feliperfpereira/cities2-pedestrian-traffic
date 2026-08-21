@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$env:DOTNET_ROLL_FORWARD = "LatestMajor"
 
 function Import-UserEnvironmentVariable([string]$name) {
     if (-not (Get-Item "Env:$name" -ErrorAction SilentlyContinue)) {
@@ -16,11 +17,19 @@ Import-UserEnvironmentVariable "CSII_TOOLPATH"
 Import-UserEnvironmentVariable "CSII_USERDATAPATH"
 
 if (-not $env:CSII_TOOLPATH) {
-    throw "CSII_TOOLPATH nao encontrado. No Cities: Skylines II, instale o Modding Toolchain em Options > Modding e abra este script novamente."
+    throw "CSII_TOOLPATH nao encontrado. No Cities: Skylines II, instale o Modding Toolchain em Options > Modding e execute este script novamente."
 }
 
 if (-not $env:CSII_USERDATAPATH) {
     throw "CSII_USERDATAPATH nao encontrado. O Modding Toolchain oficial precisa estar instalado."
+}
+
+if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+    throw "dotnet nao encontrado. Use a instalacao automatica do Modding Toolchain do Cities: Skylines II."
+}
+
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    throw "npm/Node.js nao encontrado. Use a instalacao automatica do Modding Toolchain do Cities: Skylines II."
 }
 
 Write-Host "[1/2] Compilando e instalando o mod C#..." -ForegroundColor Cyan
@@ -45,7 +54,7 @@ finally {
 }
 
 $destination = Join-Path $env:CSII_USERDATAPATH "Mods\Cities2PedestrianTraffic"
-Write-Host "" 
-Write-Host "Pronto. Arquivos instalados em:" -ForegroundColor Green
+Write-Host ""
+Write-Host "Pronto. Mod compilado e instalado em:" -ForegroundColor Green
 Write-Host $destination -ForegroundColor Green
 Write-Host "Abra/reinicie Cities: Skylines II e habilite Cities2PedestrianTraffic no playset." -ForegroundColor Yellow
