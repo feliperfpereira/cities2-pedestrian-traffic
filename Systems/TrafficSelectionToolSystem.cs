@@ -48,9 +48,12 @@ public partial class TrafficSelectionToolSystem : NetToolSystem
 
     protected override JobHandle OnUpdate(JobHandle inputDeps)
     {
+        // Suppress the NetToolSystem secondary action BEFORE its update so right-click can never
+        // remove a traffic light while this selection-only tool is active.
+        secondaryApplyAction.shouldBeEnabled = false;
+
         JobHandle result = base.OnUpdate(inputDeps);
 
-        // This mod deliberately has no right-click action; never expose traffic-light removal here.
         secondaryApplyAction.shouldBeEnabled = false;
 
         if (m_ParentControlPoints.IsCreated && m_ParentControlPoints.Length >= 4)
