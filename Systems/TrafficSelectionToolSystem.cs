@@ -48,12 +48,8 @@ public partial class TrafficSelectionToolSystem : NetToolSystem
 
     protected override JobHandle OnUpdate(JobHandle inputDeps)
     {
-        // Suppress the NetToolSystem secondary action BEFORE its update so right-click can never
-        // remove a traffic light while this selection-only tool is active.
         secondaryApplyAction.shouldBeEnabled = false;
-
         JobHandle result = base.OnUpdate(inputDeps);
-
         secondaryApplyAction.shouldBeEnabled = false;
 
         if (m_ParentControlPoints.IsCreated && m_ParentControlPoints.Length >= 4)
@@ -171,6 +167,7 @@ public partial class TrafficSelectionToolSystem : NetToolSystem
         }
 
         TrafficLights lights = EntityManager.GetComponentData<TrafficLights>(entity);
-        return (lights.m_Flags & TrafficLightFlags.MoveableBridge) == 0;
+        TrafficLightFlags unsupported = TrafficLightFlags.MoveableBridge | TrafficLightFlags.LevelCrossing;
+        return (lights.m_Flags & unsupported) == 0;
     }
 }
