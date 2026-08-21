@@ -32,6 +32,8 @@ if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
     throw "npm/Node.js nao encontrado. Use a instalacao automatica do Modding Toolchain do Cities: Skylines II."
 }
 
+$destination = Join-Path $env:CSII_USERDATAPATH "Mods\Cities2PedestrianTraffic"
+
 Write-Host "[1/2] Compilando e instalando o mod C#..." -ForegroundColor Cyan
 Push-Location $root
 try {
@@ -53,7 +55,9 @@ finally {
     Pop-Location
 }
 
-$destination = Join-Path $env:CSII_USERDATAPATH "Mods\Cities2PedestrianTraffic"
+New-Item -ItemType Directory -Path $destination -Force | Out-Null
+Copy-Item (Join-Path $root "ui\mod.json") (Join-Path $destination "mod.json") -Force
+
 Write-Host ""
 Write-Host "Pronto. Mod compilado e instalado em:" -ForegroundColor Green
 Write-Host $destination -ForegroundColor Green
