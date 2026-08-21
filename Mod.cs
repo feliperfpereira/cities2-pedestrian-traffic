@@ -9,7 +9,7 @@ namespace Cities2PedestrianTraffic;
 public sealed class Mod : IMod
 {
     public static readonly ILog Log = LogManager
-        .GetLogger(nameof(Cities2PedestrianTraffic))
+        .GetLogger("Cities2PedestrianTraffic")
         .SetShowsErrorsInUI(false);
 
     public void OnLoad(UpdateSystem updateSystem)
@@ -20,6 +20,9 @@ public sealed class Mod : IMod
         {
             Log.Info($"Mod asset: {asset.path}");
         }
+
+        // Throw away group ids derived from an old road layout before vanilla rebuilds the node.
+        updateSystem.UpdateBefore<IntersectionSignalResetSystem, Game.Net.TrafficLightInitializationSystem>(SystemUpdatePhase.Modification4B);
 
         // The vanilla initialization stays authoritative. We only amend its lane groups afterwards.
         updateSystem.UpdateAfter<IntersectionSignalSetupSystem, Game.Net.TrafficLightInitializationSystem>(SystemUpdatePhase.Modification4B);
