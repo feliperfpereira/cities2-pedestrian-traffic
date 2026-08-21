@@ -16,6 +16,7 @@ module.exports = {
   externals: {
     react: "React",
     "react-dom": "ReactDOM",
+    "cs2/api": "cs2/api",
     "cs2/modding": "cs2/modding",
   },
   module: {
