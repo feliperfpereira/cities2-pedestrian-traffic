@@ -1,6 +1,6 @@
 declare module "cs2/modding" {
   export type ModRegistrar = (moduleRegistry: {
-    append: (slot: string, component: React.ComponentType) => void;
+    append: (slot: string, component: any) => void;
   }) => void;
 }
 
