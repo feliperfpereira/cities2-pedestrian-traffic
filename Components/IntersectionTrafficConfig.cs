@@ -17,7 +17,7 @@ public enum IntersectionFeatureFlags : uint
 /// Runtime-derived signal masks are intentionally not serialized: the vanilla traffic-light
 /// initialization recreates them after loading and our setup system reapplies these two flags.
 /// </summary>
-public struct IntersectionTrafficConfig : IComponentData, ISerializable
+public struct IntersectionTrafficConfig : IComponentData, IQueryTypeParameter, ISerializable
 {
     private const int CurrentSchemaVersion = 1;
     private IntersectionFeatureFlags m_Flags;
@@ -29,7 +29,6 @@ public struct IntersectionTrafficConfig : IComponentData, ISerializable
 
     public IntersectionTrafficConfig(IntersectionFeatureFlags flags)
     {
-        // A free right turn is only safe in this mod when there is a dedicated pedestrian phase.
         if ((flags & IntersectionFeatureFlags.FreeRightTurn) != 0)
         {
             flags |= IntersectionFeatureFlags.ExclusivePedestrianPhase;
@@ -56,7 +55,6 @@ public struct IntersectionTrafficConfig : IComponentData, ISerializable
 
         if (flag == IntersectionFeatureFlags.ExclusivePedestrianPhase && !enabled)
         {
-            // Do not leave an always-green turn without a protected pedestrian interval.
             m_Flags &= ~IntersectionFeatureFlags.FreeRightTurn;
         }
     }
@@ -78,7 +76,6 @@ public struct IntersectionTrafficConfig : IComponentData, ISerializable
             m_Flags |= IntersectionFeatureFlags.ExclusivePedestrianPhase;
         }
 
-        // Reserved for future migrations.
         _ = schemaVersion;
     }
 }
