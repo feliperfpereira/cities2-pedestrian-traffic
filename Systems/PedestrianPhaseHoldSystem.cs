@@ -16,9 +16,9 @@ namespace Cities2PedestrianTraffic.Systems;
 /// </summary>
 public partial class PedestrianPhaseHoldSystem : GameSystemBase
 {
-    // CS2 runs roughly 60 simulation frames/s at 1x. This gives an ~8 second minimum
-    // pedestrian window while still scaling naturally with simulation speed.
-    public const uint MinimumPedestrianFrames = 480;
+    // CS2 simulation uses roughly 60 simulation frames per second at 1x.
+    // No user configuration: v0.1 deliberately uses a fixed ~10 second minimum phase.
+    public const uint MinimumPedestrianFrames = 600;
 
     private EntityQuery m_Query;
     private SimulationSystem m_SimulationSystem = null!;
@@ -97,7 +97,6 @@ public partial class PedestrianPhaseHoldSystem : GameSystemBase
                     continue;
                 }
 
-                // Highest normal priority is enough to make vanilla keep the current group.
                 signal.m_Priority = 127;
                 signal.m_Petitioner = lane;
                 EntityManager.SetComponentData(lane, signal);
