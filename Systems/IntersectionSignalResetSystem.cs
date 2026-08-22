@@ -16,6 +16,7 @@ namespace Cities2PedestrianTraffic.Systems
 public partial class IntersectionSignalResetSystem : GameSystemBase
 {
     private EntityQuery m_Query;
+    private EntityQuery m_AllTrafficLightsQuery;
     private EntityQuery m_GlobalConfigQuery;
 
     protected override void OnCreate()
@@ -28,8 +29,50 @@ public partial class IntersectionSignalResetSystem : GameSystemBase
             ComponentType.Exclude<Deleted>(),
             ComponentType.Exclude<Destroyed>(),
             ComponentType.Exclude<Temp>());
+
+        m_AllTrafficLightsQuery = GetEntityQuery(
+            ComponentType.ReadOnly<TrafficLights>(),
+            ComponentType.ReadOnly<SubLane>(),
+            ComponentType.Exclude<Deleted>(),
+            ComponentType.Exclude<Destroyed>(),
+            ComponentType.Exclude<Temp>());
+
         m_GlobalConfigQuery = GetEntityQuery(ComponentType.ReadOnly<CityTrafficConfig>());
         RequireForUpdate(m_Query);
+    }
+
+    protected override void OnGameLoadingComplete(
+        Colossal.Serialization.Entities.Purpose purpose,
+        GameMode mode)
+    {
+        base.OnGameLoadingComplete(purpose, mode);
+
+        if (purpose != Colossal.Serialization.Entities.Purpose.LoadGame &&
+            purpose != Colossal.Serialization.Entities.Purpose.NewGame)
+        {
+            return;
+        }
+
+        // The old recurring setup system implicitly recovered persisted local configs after load.
+        // With one-shot setup we explicitly queue configured intersections once here instead.
+        IntersectionFeatureFlags globalFlags = GetGlobalFlags();
+        using NativeArray<Entity> intersections = m_AllTrafficLightsQuery.ToEntityArray(Allocator.Temp);
+
+        foreach (Entity intersection in intersections)
+        {
+            bool hasLocalConfig = EntityManager.HasComponent<IntersectionTrafficConfig>(intersection) &&
+                                  !EntityManager.GetComponentData<IntersectionTrafficConfig>(intersection).IsEmpty;
+
+            if (!hasLocalConfig && globalFlags == IntersectionFeatureFlags.None)
+            {
+                continue;
+            }
+
+            if (!EntityManager.HasComponent<Updated>(intersection))
+            {
+                EntityManager.AddComponent<Updated>(intersection);
+            }
+        }
     }
 
     protected override void OnUpdate()
