@@ -9,8 +9,9 @@ namespace Cities2PedestrianTraffic.Systems
 {
 
 /// <summary>
-/// When the game marks an intersection Updated, discard all runtime data derived from the old
-/// lane/group layout before vanilla rebuilds it. This prevents stale group ids after road edits.
+/// When vanilla marks an intersection Updated, discard runtime state derived from the old
+/// lane/group layout and mark only intersections with an effective mod configuration for a
+/// single post-vanilla setup pass.
 /// </summary>
 public partial class IntersectionSignalResetSystem : GameSystemBase
 {
@@ -23,13 +24,18 @@ public partial class IntersectionSignalResetSystem : GameSystemBase
         m_Query = GetEntityQuery(
             ComponentType.ReadOnly<Updated>(),
             ComponentType.ReadOnly<TrafficLights>(),
-            ComponentType.ReadOnly<SubLane>());
+            ComponentType.ReadOnly<SubLane>(),
+            ComponentType.Exclude<Deleted>(),
+            ComponentType.Exclude<Destroyed>(),
+            ComponentType.Exclude<Temp>());
         m_GlobalConfigQuery = GetEntityQuery(ComponentType.ReadOnly<CityTrafficConfig>());
         RequireForUpdate(m_Query);
     }
 
     protected override void OnUpdate()
     {
+        // Read the city-wide setting once per reset batch, not once per intersection.
+        IntersectionFeatureFlags globalFlags = GetGlobalFlags();
         using NativeArray<Entity> intersections = m_Query.ToEntityArray(Allocator.Temp);
 
         foreach (Entity intersection in intersections)
@@ -39,54 +45,98 @@ public partial class IntersectionSignalResetSystem : GameSystemBase
                 continue;
             }
 
-            ApplyGlobalOverride(intersection);
+            ApplyGlobalOverride(intersection, globalFlags);
 
-            DynamicBuffer<SubLane> subLanes = EntityManager.GetBuffer<SubLane>(intersection, true);
-            for (int i = 0; i < subLanes.Length; i++)
+            bool hadRuntime = EntityManager.HasComponent<IntersectionTrafficRuntime>(intersection);
+            if (hadRuntime)
             {
-                Entity lane = subLanes[i].m_SubLane;
-                if (EntityManager.Exists(lane) && EntityManager.HasComponent<FreeRightTurnLane>(lane))
-                {
-                    EntityManager.RemoveComponent<FreeRightTurnLane>(lane);
-                }
+                CleanupLaneMarkers(intersection);
+                EntityManager.RemoveComponent<IntersectionTrafficRuntime>(intersection);
             }
 
-            if (EntityManager.HasComponent<IntersectionTrafficRuntime>(intersection))
+            bool needsSetup = HasEffectiveConfiguration(intersection);
+            bool hasSetupMarker = EntityManager.HasComponent<IntersectionTrafficNeedsSetup>(intersection);
+
+            if (needsSetup && !hasSetupMarker)
             {
-                EntityManager.RemoveComponent<IntersectionTrafficRuntime>(intersection);
+                EntityManager.AddComponent<IntersectionTrafficNeedsSetup>(intersection);
+            }
+            else if (!needsSetup && hasSetupMarker)
+            {
+                EntityManager.RemoveComponent<IntersectionTrafficNeedsSetup>(intersection);
             }
         }
     }
 
-    private void ApplyGlobalOverride(Entity intersection)
+    private IntersectionFeatureFlags GetGlobalFlags()
     {
-        IntersectionFeatureFlags flags = IntersectionFeatureFlags.None;
         using NativeArray<Entity> configs = m_GlobalConfigQuery.ToEntityArray(Allocator.Temp);
-        if (configs.Length > 0)
+        return configs.Length > 0
+            ? EntityManager.GetComponentData<CityTrafficConfig>(configs[0]).Flags
+            : IntersectionFeatureFlags.None;
+    }
+
+    private void CleanupLaneMarkers(Entity intersection)
+    {
+        DynamicBuffer<SubLane> subLanes = EntityManager.GetBuffer<SubLane>(intersection, true);
+        for (int i = 0; i < subLanes.Length; i++)
         {
-            flags = EntityManager.GetComponentData<CityTrafficConfig>(configs[0]).Flags;
+            Entity lane = subLanes[i].m_SubLane;
+            if (EntityManager.Exists(lane) && EntityManager.HasComponent<FreeRightTurnLane>(lane))
+            {
+                EntityManager.RemoveComponent<FreeRightTurnLane>(lane);
+            }
         }
+    }
+
+    private bool HasEffectiveConfiguration(Entity intersection)
+    {
+        if (EntityManager.HasComponent<Roundabout>(intersection))
+        {
+            return false;
+        }
+
+        if (EntityManager.HasComponent<IntersectionTrafficConfig>(intersection) &&
+            !EntityManager.GetComponentData<IntersectionTrafficConfig>(intersection).IsEmpty)
+        {
+            return true;
+        }
+
+        return EntityManager.HasComponent<IntersectionTrafficGlobalOverride>(intersection) &&
+               EntityManager.GetComponentData<IntersectionTrafficGlobalOverride>(intersection).Flags != IntersectionFeatureFlags.None;
+    }
+
+    private void ApplyGlobalOverride(Entity intersection, IntersectionFeatureFlags flags)
+    {
+        bool hasOverride = EntityManager.HasComponent<IntersectionTrafficGlobalOverride>(intersection);
 
         if (EntityManager.HasComponent<Roundabout>(intersection))
         {
+            if (hasOverride)
+            {
+                EntityManager.RemoveComponent<IntersectionTrafficGlobalOverride>(intersection);
+            }
             return;
         }
 
-        bool hasOverride = EntityManager.HasComponent<IntersectionTrafficGlobalOverride>(intersection);
         if (flags == IntersectionFeatureFlags.None)
         {
             if (hasOverride)
             {
                 EntityManager.RemoveComponent<IntersectionTrafficGlobalOverride>(intersection);
             }
-
             return;
         }
 
         IntersectionTrafficGlobalOverride globalOverride = new() { Flags = flags };
         if (hasOverride)
         {
-            EntityManager.SetComponentData(intersection, globalOverride);
+            IntersectionTrafficGlobalOverride current =
+                EntityManager.GetComponentData<IntersectionTrafficGlobalOverride>(intersection);
+            if (current.Flags != flags)
+            {
+                EntityManager.SetComponentData(intersection, globalOverride);
+            }
         }
         else
         {
