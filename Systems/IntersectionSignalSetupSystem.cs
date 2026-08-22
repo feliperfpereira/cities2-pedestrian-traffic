@@ -10,8 +10,9 @@ namespace Cities2PedestrianTraffic.Systems
 {
 
 /// <summary>
-/// Runs after the vanilla TrafficLightInitializationSystem and makes two small, idempotent
-/// amendments to the lane group masks of configured intersections.
+/// Runs after vanilla TrafficLightInitializationSystem, but only for intersections carrying the
+/// transient IntersectionTrafficNeedsSetup marker. The marker is consumed after one pass so lane
+/// topology work is absent from the steady-state simulation loop.
 /// </summary>
 public partial class IntersectionSignalSetupSystem : GameSystemBase
 {
@@ -20,25 +21,13 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
     protected override void OnCreate()
     {
         base.OnCreate();
-        m_Query = GetEntityQuery(new EntityQueryDesc
-        {
-            All = new[]
-            {
-                ComponentType.ReadWrite<TrafficLights>(),
-                ComponentType.ReadOnly<SubLane>(),
-            },
-            Any = new[]
-            {
-                ComponentType.ReadOnly<IntersectionTrafficConfig>(),
-                ComponentType.ReadOnly<IntersectionTrafficGlobalOverride>(),
-            },
-            None = new[]
-            {
-                ComponentType.Exclude<Deleted>(),
-                ComponentType.Exclude<Destroyed>(),
-                ComponentType.Exclude<Temp>(),
-            },
-        });
+        m_Query = GetEntityQuery(
+            ComponentType.ReadWrite<TrafficLights>(),
+            ComponentType.ReadOnly<SubLane>(),
+            ComponentType.ReadOnly<IntersectionTrafficNeedsSetup>(),
+            ComponentType.Exclude<Deleted>(),
+            ComponentType.Exclude<Destroyed>(),
+            ComponentType.Exclude<Temp>());
         RequireForUpdate(m_Query);
     }
 
@@ -52,28 +41,17 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
                 !EntityManager.HasBuffer<SubLane>(intersection) ||
                 !EntityManager.HasComponent<TrafficLights>(intersection))
             {
+                ConsumeSetupMarker(intersection);
                 continue;
             }
 
-            bool hasLocalConfig = EntityManager.HasComponent<IntersectionTrafficConfig>(intersection);
-            IntersectionTrafficConfig config = hasLocalConfig
-                ? EntityManager.GetComponentData<IntersectionTrafficConfig>(intersection)
-                : new IntersectionTrafficConfig(IntersectionFeatureFlags.None);
-
-            if (EntityManager.HasComponent<IntersectionTrafficGlobalOverride>(intersection))
+            IntersectionTrafficConfig config = GetEffectiveConfig(intersection);
+            if (config.IsEmpty)
             {
-                IntersectionTrafficGlobalOverride globalOverride =
-                    EntityManager.GetComponentData<IntersectionTrafficGlobalOverride>(intersection);
-                if (globalOverride.ExclusivePedestrianPhase)
-                {
-                    config.Set(IntersectionFeatureFlags.ExclusivePedestrianPhase, true);
-                }
-
-                if (globalOverride.FreeRightTurn)
-                {
-                    config.Set(IntersectionFeatureFlags.FreeRightTurn, true);
-                }
+                ConsumeSetupMarker(intersection);
+                continue;
             }
+
             TrafficLights trafficLights = EntityManager.GetComponentData<TrafficLights>(intersection);
             DynamicBuffer<SubLane> subLanes = EntityManager.GetBuffer<SubLane>(intersection, true);
 
@@ -90,8 +68,6 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
                     groupCount++;
                 }
 
-                // One dedicated group only. Existing multiple pedestrian-only groups are collapsed
-                // to the first available bit to keep the feature predictable.
                 pedestrianGroupMask = LowestBit(pedestrianGroupMask);
 
                 if (pedestrianGroupMask != 0)
@@ -103,9 +79,36 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
             trafficLights.m_SignalGroupCount = (byte)groupCount;
             EntityManager.SetComponentData(intersection, trafficLights);
 
-            UpdateRuntime(intersection, pedestrianGroupMask);
-            ApplyFreeRightTurn(intersection, subLanes, groupCount, pedestrianGroupMask, config.FreeRightTurn);
+            bool freeRightActive = config.FreeRightTurn && pedestrianGroupMask != 0;
+            ApplyFreeRightTurn(intersection, subLanes, groupCount, pedestrianGroupMask, freeRightActive);
+            UpdateRuntime(intersection, pedestrianGroupMask, freeRightActive);
+            ConsumeSetupMarker(intersection);
         }
+    }
+
+    private IntersectionTrafficConfig GetEffectiveConfig(Entity intersection)
+    {
+        IntersectionTrafficConfig config = EntityManager.HasComponent<IntersectionTrafficConfig>(intersection)
+            ? EntityManager.GetComponentData<IntersectionTrafficConfig>(intersection)
+            : new IntersectionTrafficConfig(IntersectionFeatureFlags.None);
+
+        if (EntityManager.HasComponent<IntersectionTrafficGlobalOverride>(intersection))
+        {
+            IntersectionTrafficGlobalOverride globalOverride =
+                EntityManager.GetComponentData<IntersectionTrafficGlobalOverride>(intersection);
+
+            if (globalOverride.ExclusivePedestrianPhase)
+            {
+                config.Set(IntersectionFeatureFlags.ExclusivePedestrianPhase, true);
+            }
+
+            if (globalOverride.FreeRightTurn)
+            {
+                config.Set(IntersectionFeatureFlags.FreeRightTurn, true);
+            }
+        }
+
+        return config;
     }
 
     private ushort FindExistingPedestrianOnlyGroup(DynamicBuffer<SubLane> subLanes, int groupCount)
@@ -197,7 +200,7 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
                 isRightTurn = (carLane.m_Flags & (CarLaneFlags.TurnRight | CarLaneFlags.GentleTurnRight)) != 0;
             }
 
-            if (!enabled || pedestrianGroupMask == 0 || !isRightTurn || !EntityManager.HasComponent<LaneSignal>(lane))
+            if (!enabled || !isRightTurn || !EntityManager.HasComponent<LaneSignal>(lane))
             {
                 if (hasMarker)
                 {
@@ -208,7 +211,6 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
 
             LaneSignal signal = EntityManager.GetComponentData<LaneSignal>(lane);
 
-            // Remove groups we added previously to recover the current vanilla/base group mask.
             ushort previousAdded = hasMarker ? previous.YieldGroupMask : (ushort)0;
             ushort baseMask = (ushort)(signal.m_GroupMask & ~previousAdded);
             baseMask &= (ushort)~pedestrianGroupMask;
@@ -234,7 +236,7 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
         }
     }
 
-    private void UpdateRuntime(Entity intersection, ushort pedestrianGroupMask)
+    private void UpdateRuntime(Entity intersection, ushort pedestrianGroupMask, bool freeRightActive)
     {
         IntersectionTrafficRuntime runtime = EntityManager.HasComponent<IntersectionTrafficRuntime>(intersection)
             ? EntityManager.GetComponentData<IntersectionTrafficRuntime>(intersection)
@@ -247,6 +249,7 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
         }
 
         runtime.PedestrianGroupMask = pedestrianGroupMask;
+        runtime.FreeRightTurnActive = freeRightActive;
 
         if (EntityManager.HasComponent<IntersectionTrafficRuntime>(intersection))
         {
@@ -255,6 +258,16 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
         else
         {
             EntityManager.AddComponentData(intersection, runtime);
+        }
+    }
+
+    private void ConsumeSetupMarker(Entity intersection)
+    {
+        if (intersection != Entity.Null &&
+            EntityManager.Exists(intersection) &&
+            EntityManager.HasComponent<IntersectionTrafficNeedsSetup>(intersection))
+        {
+            EntityManager.RemoveComponent<IntersectionTrafficNeedsSetup>(intersection);
         }
     }
 
