@@ -11,5 +11,6 @@ public struct IntersectionTrafficRuntime : IComponentData
     public ushort PedestrianGroupMask;
     public uint PedestrianHoldStartFrame;
     public bool PedestrianHoldActive;
+    public bool FreeRightTurnActive;
 }
 }
