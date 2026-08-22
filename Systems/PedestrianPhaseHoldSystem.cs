@@ -7,7 +7,8 @@ using Game.Tools;
 using Unity.Collections;
 using Unity.Entities;
 
-namespace Cities2PedestrianTraffic.Systems;
+namespace Cities2PedestrianTraffic.Systems
+{
 
 /// <summary>
 /// Keeps the vanilla state machine on the dedicated pedestrian group for a minimum interval
@@ -115,4 +116,5 @@ public partial class PedestrianPhaseHoldSystem : GameSystemBase
         runtime.PedestrianHoldStartFrame = 0;
         EntityManager.SetComponentData(intersection, runtime);
     }
+}
 }

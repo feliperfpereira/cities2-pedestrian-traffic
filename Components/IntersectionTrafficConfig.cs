@@ -2,7 +2,8 @@ using System;
 using Colossal.Serialization.Entities;
 using Unity.Entities;
 
-namespace Cities2PedestrianTraffic.Components;
+namespace Cities2PedestrianTraffic.Components
+{
 
 [Flags]
 public enum IntersectionFeatureFlags : uint
@@ -78,4 +79,5 @@ public struct IntersectionTrafficConfig : IComponentData, IQueryTypeParameter, I
 
         _ = schemaVersion;
     }
+}
 }

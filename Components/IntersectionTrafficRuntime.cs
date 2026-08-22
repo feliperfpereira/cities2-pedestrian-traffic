@@ -1,6 +1,7 @@
 using Unity.Entities;
 
-namespace Cities2PedestrianTraffic.Components;
+namespace Cities2PedestrianTraffic.Components
+{
 
 /// <summary>
 /// Derived state. Not serialized; rebuilt from the vanilla lane layout after load/rebuild.
@@ -10,4 +11,5 @@ public struct IntersectionTrafficRuntime : IComponentData
     public ushort PedestrianGroupMask;
     public uint PedestrianHoldStartFrame;
     public bool PedestrianHoldActive;
+}
 }

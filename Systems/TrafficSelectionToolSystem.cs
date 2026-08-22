@@ -1,4 +1,3 @@
-using System.Reflection;
 using Game.Net;
 using Game.Prefabs;
 using Game.Tools;
@@ -6,7 +5,8 @@ using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 
-namespace Cities2PedestrianTraffic.Systems;
+namespace Cities2PedestrianTraffic.Systems
+{
 
 /// <summary>
 /// Tiny selection tool built on the game's traffic-light net upgrade tool. It never edits lane
@@ -17,7 +17,6 @@ public partial class TrafficSelectionToolSystem : NetToolSystem
     public override string toolID => "Cities2PedestrianTraffic.Tool";
 
     private NativeList<ControlPoint> m_ParentControlPoints;
-    private NativeReference<AppliedUpgrade> m_ParentAppliedUpgrade;
     private EntityQuery m_PlaceableNetDataQuery;
     private Entity m_TrafficLightPrefabEntity = Entity.Null;
     private Entity m_RaycastResult = Entity.Null;
@@ -31,19 +30,6 @@ public partial class TrafficSelectionToolSystem : NetToolSystem
     {
         base.OnCreate();
         m_ParentControlPoints = GetControlPoints(out JobHandle _);
-
-        FieldInfo? appliedUpgradeField = typeof(NetToolSystem).GetField(
-            "m_AppliedUpgrade",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-
-        if (appliedUpgradeField?.GetValue(this) is NativeReference<AppliedUpgrade> appliedUpgrade)
-        {
-            m_ParentAppliedUpgrade = appliedUpgrade;
-        }
-        else
-        {
-            Mod.Log.Error("Could not access NetToolSystem.m_AppliedUpgrade; selection tool disabled.");
-        }
     }
 
     protected override JobHandle OnUpdate(JobHandle inputDeps)
@@ -63,13 +49,19 @@ public partial class TrafficSelectionToolSystem : NetToolSystem
 
         applyAction.shouldBeEnabled = IsValidTrafficLight(m_RaycastResult);
 
-        if (applyAction.WasReleasedThisFrame() && m_ParentAppliedUpgrade.IsCreated)
+        // NetToolSystem only fills m_AppliedUpgrade when a real network upgrade is
+        // committed. This tool is selection-only, so a traffic-light click may never
+        // produce that value. Use the current raycast target instead.
+        bool clicked = applyAction.WasPressedThisFrame() || applyAction.WasReleasedThisFrame();
+        if (clicked)
         {
-            Entity entity = m_ParentAppliedUpgrade.Value.m_Entity;
+            Entity entity = m_RaycastResult;
+            Mod.Log.Info($"Traffic-light selection click: entity={entity.Index}, valid={IsValidTrafficLight(entity)}.");
             if (IsValidTrafficLight(entity))
             {
                 SelectedEntity = entity;
                 SelectionRevision++;
+                Mod.Log.Info($"Selected traffic-light intersection {entity.Index}.");
             }
         }
 
@@ -113,6 +105,10 @@ public partial class TrafficSelectionToolSystem : NetToolSystem
         {
             Mod.Log.Error("Traffic-light net prefab was not found; selection tool cannot be enabled.");
         }
+        else
+        {
+            Mod.Log.Info("Traffic-light selection tool is ready.");
+        }
     }
 
     protected override bool GetAllowApply()
@@ -134,6 +130,7 @@ public partial class TrafficSelectionToolSystem : NetToolSystem
         prefab = netPrefab;
         underground = m_ToolSystem.activeTool.requireUnderground;
         m_ToolSystem.activeTool = this;
+        Mod.Log.Info("Traffic-light selection tool enabled.");
         return true;
     }
 
@@ -170,4 +167,5 @@ public partial class TrafficSelectionToolSystem : NetToolSystem
         TrafficLightFlags unsupported = TrafficLightFlags.MoveableBridge | TrafficLightFlags.LevelCrossing;
         return (lights.m_Flags & unsupported) == 0;
     }
+}
 }

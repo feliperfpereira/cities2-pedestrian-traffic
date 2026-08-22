@@ -4,7 +4,8 @@ using Game.Modding;
 using Game.SceneFlow;
 using Cities2PedestrianTraffic.Systems;
 
-namespace Cities2PedestrianTraffic;
+namespace Cities2PedestrianTraffic
+{
 
 public sealed class Mod : IMod
 {
@@ -41,4 +42,5 @@ public sealed class Mod : IMod
     {
         Log.Info("Disposing Cities2PedestrianTraffic");
     }
+}
 }

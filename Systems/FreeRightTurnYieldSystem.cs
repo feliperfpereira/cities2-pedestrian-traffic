@@ -6,7 +6,8 @@ using Game.Tools;
 using Unity.Collections;
 using Unity.Entities;
 
-namespace Cities2PedestrianTraffic.Systems;
+namespace Cities2PedestrianTraffic.Systems
+{
 
 /// <summary>
 /// Vanilla has already evaluated the signal by the time this runs. If a right-turn lane is green
@@ -63,4 +64,5 @@ public partial class FreeRightTurnYieldSystem : GameSystemBase
             }
         }
     }
+}
 }

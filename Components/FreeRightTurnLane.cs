@@ -1,6 +1,7 @@
 using Unity.Entities;
 
-namespace Cities2PedestrianTraffic.Components;
+namespace Cities2PedestrianTraffic.Components
+{
 
 /// <summary>
 /// Runtime marker for a right-turn lane that was added to signal groups by the mod.
@@ -10,4 +11,5 @@ public struct FreeRightTurnLane : IComponentData
 {
     public Entity Intersection;
     public ushort YieldGroupMask;
+}
 }

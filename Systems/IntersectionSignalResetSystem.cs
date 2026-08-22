@@ -5,7 +5,8 @@ using Game.Net;
 using Unity.Collections;
 using Unity.Entities;
 
-namespace Cities2PedestrianTraffic.Systems;
+namespace Cities2PedestrianTraffic.Systems
+{
 
 /// <summary>
 /// When the game marks an intersection Updated, discard all runtime data derived from the old
@@ -14,6 +15,7 @@ namespace Cities2PedestrianTraffic.Systems;
 public partial class IntersectionSignalResetSystem : GameSystemBase
 {
     private EntityQuery m_Query;
+    private EntityQuery m_GlobalConfigQuery;
 
     protected override void OnCreate()
     {
@@ -22,6 +24,7 @@ public partial class IntersectionSignalResetSystem : GameSystemBase
             ComponentType.ReadOnly<Updated>(),
             ComponentType.ReadOnly<TrafficLights>(),
             ComponentType.ReadOnly<SubLane>());
+        m_GlobalConfigQuery = GetEntityQuery(ComponentType.ReadOnly<CityTrafficConfig>());
         RequireForUpdate(m_Query);
     }
 
@@ -35,6 +38,8 @@ public partial class IntersectionSignalResetSystem : GameSystemBase
             {
                 continue;
             }
+
+            ApplyGlobalOverride(intersection);
 
             DynamicBuffer<SubLane> subLanes = EntityManager.GetBuffer<SubLane>(intersection, true);
             for (int i = 0; i < subLanes.Length; i++)
@@ -52,4 +57,41 @@ public partial class IntersectionSignalResetSystem : GameSystemBase
             }
         }
     }
+
+    private void ApplyGlobalOverride(Entity intersection)
+    {
+        IntersectionFeatureFlags flags = IntersectionFeatureFlags.None;
+        using NativeArray<Entity> configs = m_GlobalConfigQuery.ToEntityArray(Allocator.Temp);
+        if (configs.Length > 0)
+        {
+            flags = EntityManager.GetComponentData<CityTrafficConfig>(configs[0]).Flags;
+        }
+
+        if (EntityManager.HasComponent<Roundabout>(intersection))
+        {
+            return;
+        }
+
+        bool hasOverride = EntityManager.HasComponent<IntersectionTrafficGlobalOverride>(intersection);
+        if (flags == IntersectionFeatureFlags.None)
+        {
+            if (hasOverride)
+            {
+                EntityManager.RemoveComponent<IntersectionTrafficGlobalOverride>(intersection);
+            }
+
+            return;
+        }
+
+        IntersectionTrafficGlobalOverride globalOverride = new() { Flags = flags };
+        if (hasOverride)
+        {
+            EntityManager.SetComponentData(intersection, globalOverride);
+        }
+        else
+        {
+            EntityManager.AddComponentData(intersection, globalOverride);
+        }
+    }
+}
 }

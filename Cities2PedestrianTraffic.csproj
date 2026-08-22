@@ -12,6 +12,12 @@
   <Import Project="$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))\Mod.props" />
   <Import Project="$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))\Mod.targets" />
 
+  <!-- Mod.props targets the legacy toolchain default (C# 9), but this project
+       uses file-scoped namespaces and therefore requires C# 10 or newer. -->
+  <PropertyGroup>
+    <LangVersion>12.0</LangVersion>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="All" />
   </ItemGroup>
@@ -22,6 +28,7 @@
     <Reference Include="Colossal.IO.AssetDatabase"><Private>false</Private></Reference>
     <Reference Include="Colossal.Localization"><Private>false</Private></Reference>
     <Reference Include="Colossal.Logging"><Private>false</Private></Reference>
+    <Reference Include="Colossal.Mathematics"><Private>false</Private></Reference>
     <Reference Include="Colossal.UI"><Private>false</Private></Reference>
     <Reference Include="Colossal.UI.Binding"><Private>false</Private></Reference>
     <Reference Include="Unity.Collections"><Private>false</Private></Reference>

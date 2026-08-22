@@ -6,7 +6,8 @@ using Game.Tools;
 using Unity.Collections;
 using Unity.Entities;
 
-namespace Cities2PedestrianTraffic.Systems;
+namespace Cities2PedestrianTraffic.Systems
+{
 
 /// <summary>
 /// Runs after the vanilla TrafficLightInitializationSystem and makes two small, idempotent
@@ -19,13 +20,25 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
     protected override void OnCreate()
     {
         base.OnCreate();
-        m_Query = GetEntityQuery(
-            ComponentType.ReadOnly<IntersectionTrafficConfig>(),
-            ComponentType.ReadWrite<TrafficLights>(),
-            ComponentType.ReadOnly<SubLane>(),
-            ComponentType.Exclude<Deleted>(),
-            ComponentType.Exclude<Destroyed>(),
-            ComponentType.Exclude<Temp>());
+        m_Query = GetEntityQuery(new EntityQueryDesc
+        {
+            All = new[]
+            {
+                ComponentType.ReadWrite<TrafficLights>(),
+                ComponentType.ReadOnly<SubLane>(),
+            },
+            Any = new[]
+            {
+                ComponentType.ReadOnly<IntersectionTrafficConfig>(),
+                ComponentType.ReadOnly<IntersectionTrafficGlobalOverride>(),
+            },
+            None = new[]
+            {
+                ComponentType.Exclude<Deleted>(),
+                ComponentType.Exclude<Destroyed>(),
+                ComponentType.Exclude<Temp>(),
+            },
+        });
         RequireForUpdate(m_Query);
     }
 
@@ -42,7 +55,25 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
                 continue;
             }
 
-            IntersectionTrafficConfig config = EntityManager.GetComponentData<IntersectionTrafficConfig>(intersection);
+            bool hasLocalConfig = EntityManager.HasComponent<IntersectionTrafficConfig>(intersection);
+            IntersectionTrafficConfig config = hasLocalConfig
+                ? EntityManager.GetComponentData<IntersectionTrafficConfig>(intersection)
+                : new IntersectionTrafficConfig(IntersectionFeatureFlags.None);
+
+            if (EntityManager.HasComponent<IntersectionTrafficGlobalOverride>(intersection))
+            {
+                IntersectionTrafficGlobalOverride globalOverride =
+                    EntityManager.GetComponentData<IntersectionTrafficGlobalOverride>(intersection);
+                if (globalOverride.ExclusivePedestrianPhase)
+                {
+                    config.Set(IntersectionFeatureFlags.ExclusivePedestrianPhase, true);
+                }
+
+                if (globalOverride.FreeRightTurn)
+                {
+                    config.Set(IntersectionFeatureFlags.FreeRightTurn, true);
+                }
+            }
             TrafficLights trafficLights = EntityManager.GetComponentData<TrafficLights>(intersection);
             DynamicBuffer<SubLane> subLanes = EntityManager.GetBuffer<SubLane>(intersection, true);
 
@@ -243,4 +274,5 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
     {
         return value == 0 ? (ushort)0 : (ushort)(value & (ushort)(~value + 1));
     }
+}
 }
