@@ -11,8 +11,8 @@ namespace Cities2PedestrianTraffic.Systems
 {
 
 /// <summary>
-/// Runs immediately after vanilla on the same UpdateFrame slice. Only intersections whose runtime
-/// state says free-right is active scan their sublanes; added right-turn greens are downgraded to Yield.
+/// Runs immediately after vanilla on the same UpdateFrame slice. Uses a setup-time cache of the
+/// right-turn lanes that actually need Yield handling, avoiding a full SubLane scan per junction.
 /// </summary>
 public partial class FreeRightTurnYieldSystem : GameSystemBase
 {
@@ -30,7 +30,7 @@ public partial class FreeRightTurnYieldSystem : GameSystemBase
         m_Query = GetEntityQuery(
             ComponentType.ReadOnly<IntersectionTrafficRuntime>(),
             ComponentType.ReadOnly<TrafficLights>(),
-            ComponentType.ReadOnly<SubLane>(),
+            ComponentType.ReadOnly<FreeRightTurnSignalLaneRef>(),
             ComponentType.ReadOnly<UpdateFrame>(),
             ComponentType.Exclude<Deleted>(),
             ComponentType.Exclude<Destroyed>(),
@@ -65,18 +65,19 @@ public partial class FreeRightTurnYieldSystem : GameSystemBase
             }
 
             ushort currentGroup = (ushort)(1u << (trafficLights.m_CurrentSignalGroup - 1));
-            DynamicBuffer<SubLane> subLanes = EntityManager.GetBuffer<SubLane>(intersection, true);
+            DynamicBuffer<FreeRightTurnSignalLaneRef> rightTurnLanes =
+                EntityManager.GetBuffer<FreeRightTurnSignalLaneRef>(intersection, true);
 
-            for (int i = 0; i < subLanes.Length; i++)
+            for (int i = 0; i < rightTurnLanes.Length; i++)
             {
-                Entity lane = subLanes[i].m_SubLane;
-                if (!EntityManager.HasComponent<FreeRightTurnLane>(lane) || !EntityManager.HasComponent<LaneSignal>(lane))
+                FreeRightTurnSignalLaneRef cachedLane = rightTurnLanes[i];
+                if ((cachedLane.YieldGroupMask & currentGroup) == 0)
                 {
                     continue;
                 }
 
-                FreeRightTurnLane freeTurn = EntityManager.GetComponentData<FreeRightTurnLane>(lane);
-                if ((freeTurn.YieldGroupMask & currentGroup) == 0)
+                Entity lane = cachedLane.Lane;
+                if (!EntityManager.Exists(lane) || !EntityManager.HasComponent<LaneSignal>(lane))
                 {
                     continue;
                 }
