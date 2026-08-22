@@ -45,6 +45,10 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
                 continue;
             }
 
+            // Runtime lane references are derived from the current vanilla lane topology.
+            // Always discard an old cache before computing the new layout.
+            ClearLaneCaches(intersection);
+
             IntersectionTrafficConfig config = GetEffectiveConfig(intersection);
             if (config.IsEmpty)
             {
@@ -82,6 +86,10 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
             bool freeRightActive = config.FreeRightTurn && pedestrianGroupMask != 0;
             ApplyFreeRightTurn(intersection, subLanes, groupCount, pedestrianGroupMask, freeRightActive);
             UpdateRuntime(intersection, pedestrianGroupMask, freeRightActive);
+
+            // The two simulation hot paths consume these compact caches instead of walking every
+            // SubLane and asking the EntityManager which lanes are relevant every update slice.
+            RebuildLaneCaches(intersection, pedestrianGroupMask, freeRightActive);
             ConsumeSetupMarker(intersection);
         }
     }
@@ -258,6 +266,82 @@ public partial class IntersectionSignalSetupSystem : GameSystemBase
         else
         {
             EntityManager.AddComponentData(intersection, runtime);
+        }
+    }
+
+    private void RebuildLaneCaches(Entity intersection, ushort pedestrianGroupMask, bool freeRightActive)
+    {
+        bool cachePedestrians = pedestrianGroupMask != 0;
+        if (cachePedestrians)
+        {
+            EntityManager.AddBuffer<PedestrianSignalLaneRef>(intersection);
+        }
+
+        if (freeRightActive)
+        {
+            EntityManager.AddBuffer<FreeRightTurnSignalLaneRef>(intersection);
+        }
+
+        if (!cachePedestrians && !freeRightActive)
+        {
+            return;
+        }
+
+        // Adding buffer components is structural, so reacquire SubLane only after all additions.
+        DynamicBuffer<SubLane> subLanes = EntityManager.GetBuffer<SubLane>(intersection, true);
+        DynamicBuffer<PedestrianSignalLaneRef> pedestrianCache = default;
+        DynamicBuffer<FreeRightTurnSignalLaneRef> freeRightCache = default;
+
+        if (cachePedestrians)
+        {
+            pedestrianCache = EntityManager.GetBuffer<PedestrianSignalLaneRef>(intersection);
+        }
+
+        if (freeRightActive)
+        {
+            freeRightCache = EntityManager.GetBuffer<FreeRightTurnSignalLaneRef>(intersection);
+        }
+
+        for (int i = 0; i < subLanes.Length; i++)
+        {
+            Entity lane = subLanes[i].m_SubLane;
+
+            if (cachePedestrians &&
+                EntityManager.HasComponent<PedestrianLane>(lane) &&
+                EntityManager.HasComponent<LaneSignal>(lane))
+            {
+                LaneSignal signal = EntityManager.GetComponentData<LaneSignal>(lane);
+                if ((signal.m_GroupMask & pedestrianGroupMask) != 0)
+                {
+                    pedestrianCache.Add(new PedestrianSignalLaneRef { Lane = lane });
+                }
+            }
+
+            if (freeRightActive && EntityManager.HasComponent<FreeRightTurnLane>(lane))
+            {
+                FreeRightTurnLane marker = EntityManager.GetComponentData<FreeRightTurnLane>(lane);
+                if (marker.YieldGroupMask != 0)
+                {
+                    freeRightCache.Add(new FreeRightTurnSignalLaneRef
+                    {
+                        Lane = lane,
+                        YieldGroupMask = marker.YieldGroupMask,
+                    });
+                }
+            }
+        }
+    }
+
+    private void ClearLaneCaches(Entity intersection)
+    {
+        if (EntityManager.HasBuffer<PedestrianSignalLaneRef>(intersection))
+        {
+            EntityManager.RemoveComponent<PedestrianSignalLaneRef>(intersection);
+        }
+
+        if (EntityManager.HasBuffer<FreeRightTurnSignalLaneRef>(intersection))
+        {
+            EntityManager.RemoveComponent<FreeRightTurnSignalLaneRef>(intersection);
         }
     }
 
