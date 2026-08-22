@@ -95,6 +95,14 @@ public partial class IntersectionSignalResetSystem : GameSystemBase
             if (hadRuntime)
             {
                 CleanupLaneMarkers(intersection);
+            }
+
+            // Cached lane references belong to the old topology. Drop them for every Updated node,
+            // including the case where a feature was just disabled and no setup pass will follow.
+            ClearLaneCaches(intersection);
+
+            if (hadRuntime)
+            {
                 EntityManager.RemoveComponent<IntersectionTrafficRuntime>(intersection);
             }
 
@@ -130,6 +138,19 @@ public partial class IntersectionSignalResetSystem : GameSystemBase
             {
                 EntityManager.RemoveComponent<FreeRightTurnLane>(lane);
             }
+        }
+    }
+
+    private void ClearLaneCaches(Entity intersection)
+    {
+        if (EntityManager.HasBuffer<PedestrianSignalLaneRef>(intersection))
+        {
+            EntityManager.RemoveComponent<PedestrianSignalLaneRef>(intersection);
+        }
+
+        if (EntityManager.HasBuffer<FreeRightTurnSignalLaneRef>(intersection))
+        {
+            EntityManager.RemoveComponent<FreeRightTurnSignalLaneRef>(intersection);
         }
     }
 
