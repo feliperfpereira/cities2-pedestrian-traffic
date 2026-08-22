@@ -2,6 +2,7 @@ using Cities2PedestrianTraffic.Components;
 using Game;
 using Game.Common;
 using Game.Net;
+using Game.Tools;
 using Unity.Collections;
 using Unity.Entities;
 
