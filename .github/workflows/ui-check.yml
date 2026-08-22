@@ -1,0 +1,29 @@
+name: UI check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feature/pedestrian-traffic-v1
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package.json
+      - name: Install dependencies
+        working-directory: ui
+        run: npm install --no-audit --no-fund
+      - name: Type check
+        working-directory: ui
+        run: npx tsc --noEmit
+      - name: Build UI module
+        working-directory: ui
+        env:
+          CSII_USERDATAPATH: ${{ runner.temp }}/cs2-userdata
+        run: npm run build

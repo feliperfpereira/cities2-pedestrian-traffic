@@ -1,0 +1,9 @@
+.vs/
+.idea/
+bin/
+obj/
+*.user
+*.suo
+ui/node_modules/
+ui/build/
+ui/*.log
