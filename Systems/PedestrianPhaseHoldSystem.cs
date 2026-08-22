@@ -13,6 +13,7 @@ namespace Cities2PedestrianTraffic.Systems
 /// <summary>
 /// Keeps the vanilla state machine on the dedicated pedestrian group for a minimum interval
 /// by supplying pedestrian demand immediately before vanilla evaluates the same UpdateFrame slice.
+/// Uses a setup-time cache of pedestrian lanes instead of scanning every SubLane in the junction.
 /// </summary>
 public partial class PedestrianPhaseHoldSystem : GameSystemBase
 {
@@ -31,7 +32,7 @@ public partial class PedestrianPhaseHoldSystem : GameSystemBase
         m_Query = GetEntityQuery(
             ComponentType.ReadWrite<IntersectionTrafficRuntime>(),
             ComponentType.ReadOnly<TrafficLights>(),
-            ComponentType.ReadOnly<SubLane>(),
+            ComponentType.ReadOnly<PedestrianSignalLaneRef>(),
             ComponentType.ReadOnly<UpdateFrame>(),
             ComponentType.Exclude<Deleted>(),
             ComponentType.Exclude<Destroyed>(),
@@ -88,11 +89,13 @@ public partial class PedestrianPhaseHoldSystem : GameSystemBase
                 continue;
             }
 
-            DynamicBuffer<SubLane> subLanes = EntityManager.GetBuffer<SubLane>(intersection, true);
-            for (int i = 0; i < subLanes.Length; i++)
+            DynamicBuffer<PedestrianSignalLaneRef> pedestrianLanes =
+                EntityManager.GetBuffer<PedestrianSignalLaneRef>(intersection, true);
+
+            for (int i = 0; i < pedestrianLanes.Length; i++)
             {
-                Entity lane = subLanes[i].m_SubLane;
-                if (!EntityManager.HasComponent<PedestrianLane>(lane) || !EntityManager.HasComponent<LaneSignal>(lane))
+                Entity lane = pedestrianLanes[i].Lane;
+                if (!EntityManager.Exists(lane) || !EntityManager.HasComponent<LaneSignal>(lane))
                 {
                     continue;
                 }
