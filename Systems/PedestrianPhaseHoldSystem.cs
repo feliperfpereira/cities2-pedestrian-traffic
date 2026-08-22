@@ -12,27 +12,27 @@ namespace Cities2PedestrianTraffic.Systems
 
 /// <summary>
 /// Keeps the vanilla state machine on the dedicated pedestrian group for a minimum interval
-/// by supplying pedestrian demand before TrafficLightSystem evaluates the next group.
-/// It never writes TrafficLights.m_State/m_Timer directly.
+/// by supplying pedestrian demand immediately before vanilla evaluates the same UpdateFrame slice.
 /// </summary>
 public partial class PedestrianPhaseHoldSystem : GameSystemBase
 {
-    // CS2 simulation uses roughly 60 simulation frames per second at 1x.
-    // No user configuration: v0.1 deliberately uses a fixed ~10 second minimum phase.
     public const uint MinimumPedestrianFrames = 600;
+    private const int UpdateFrameBuckets = 16;
 
     private EntityQuery m_Query;
     private SimulationSystem m_SimulationSystem = null!;
+
+    public override int GetUpdateInterval(SystemUpdatePhase phase) => 4;
 
     protected override void OnCreate()
     {
         base.OnCreate();
         m_SimulationSystem = World.GetOrCreateSystemManaged<SimulationSystem>();
         m_Query = GetEntityQuery(
-            ComponentType.ReadOnly<IntersectionTrafficConfig>(),
             ComponentType.ReadWrite<IntersectionTrafficRuntime>(),
             ComponentType.ReadOnly<TrafficLights>(),
             ComponentType.ReadOnly<SubLane>(),
+            ComponentType.ReadOnly<UpdateFrame>(),
             ComponentType.Exclude<Deleted>(),
             ComponentType.Exclude<Destroyed>(),
             ComponentType.Exclude<Temp>());
@@ -42,20 +42,25 @@ public partial class PedestrianPhaseHoldSystem : GameSystemBase
     protected override void OnUpdate()
     {
         uint frame = m_SimulationSystem.frameIndex;
+        m_Query.ResetFilter();
+        m_Query.SetSharedComponentFilter(new UpdateFrame(
+            SimulationUtils.GetUpdateFrameWithInterval(
+                frame,
+                (uint)GetUpdateInterval(SystemUpdatePhase.GameSimulation),
+                UpdateFrameBuckets)));
+
         using NativeArray<Entity> intersections = m_Query.ToEntityArray(Allocator.Temp);
 
         foreach (Entity intersection in intersections)
         {
-            IntersectionTrafficConfig config = EntityManager.GetComponentData<IntersectionTrafficConfig>(intersection);
             IntersectionTrafficRuntime runtime = EntityManager.GetComponentData<IntersectionTrafficRuntime>(intersection);
-            TrafficLights trafficLights = EntityManager.GetComponentData<TrafficLights>(intersection);
-
-            if (!config.ExclusivePedestrianPhase || runtime.PedestrianGroupMask == 0)
+            if (runtime.PedestrianGroupMask == 0)
             {
                 ResetHold(intersection, runtime);
                 continue;
             }
 
+            TrafficLights trafficLights = EntityManager.GetComponentData<TrafficLights>(intersection);
             ushort currentGroup = trafficLights.m_CurrentSignalGroup > 0
                 ? (ushort)(1u << (trafficLights.m_CurrentSignalGroup - 1))
                 : (ushort)0;
